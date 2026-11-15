@@ -1,0 +1,178 @@
+{
+  "run_id": "e69d425b27204bb183801d9ea4375c77",
+  "timestamp": "2026-11-15T03:28:03.593188+00:00",
+  "model_name": null,
+  "base_url": "http://localhost:11434",
+  "model_parameters": {
+    "temperature": 0.0,
+    "format": "json",
+    "stream": false,
+    "timeout_seconds": 120.0,
+    "endpoint": "/api/chat"
+  },
+  "prompt": null,
+  "repair_prompt": null,
+  "structured_input": {
+    "current_date": "2026-11-15",
+    "topics": [
+      {
+        "course": "CS101",
+        "topic": "Recursion",
+        "deadline": "2026-12-05",
+        "estimated_study_hours": 3.0,
+        "quiz_score": 80,
+        "task_weight": 80.0,
+        "availability": [
+          {
+            "available_date": "2026-11-16",
+            "start_time": "18:00",
+            "duration_minutes": 120
+          },
+          {
+            "available_date": "2026-11-17",
+            "start_time": "18:00",
+            "duration_minutes": 120
+          },
+          {
+            "available_date": "2026-11-18",
+            "start_time": "18:00",
+            "duration_minutes": 120
+          },
+          {
+            "available_date": "2026-11-19",
+            "start_time": "18:00",
+            "duration_minutes": 120
+          },
+          {
+            "available_date": "2026-11-20",
+            "start_time": "18:00",
+            "duration_minutes": 120
+          }
+        ]
+      },
+      {
+        "course": "CS101",
+        "topic": "Sorting Algorithms",
+        "deadline": "2026-12-08",
+        "estimated_study_hours": 2.0,
+        "quiz_score": 68,
+        "task_weight": 65.0,
+        "availability": [
+          {
+            "available_date": "2026-11-16",
+            "start_time": "16:00",
+            "duration_minutes": 120
+          },
+          {
+            "available_date": "2026-11-17",
+            "start_time": "16:00",
+            "duration_minutes": 120
+          }
+        ]
+      },
+      {
+        "course": "STAT201",
+        "topic": "Probability Distributions",
+        "deadline": "2026-12-12",
+        "estimated_study_hours": 4.0,
+        "quiz_score": 85,
+        "task_weight": 90.0,
+        "availability": [
+          {
+            "available_date": "2026-11-16",
+            "start_time": "14:00",
+            "duration_minutes": 120
+          },
+          {
+            "available_date": "2026-11-17",
+            "start_time": "14:00",
+            "duration_minutes": 120
+          }
+        ]
+      },
+      {
+        "course": "STAT201",
+        "topic": "Hypothesis Testing",
+        "deadline": "2026-12-03",
+        "estimated_study_hours": 2.5,
+        "quiz_score": 55,
+        "task_weight": 70.0,
+        "availability": [
+          {
+            "available_date": "2026-11-16",
+            "start_time": "09:00",
+            "duration_minutes": 120
+          },
+          {
+            "available_date": "2026-11-17",
+            "start_time": "09:00",
+            "duration_minutes": 120
+          },
+          {
+            "available_date": "2026-11-18",
+            "start_time": "09:00",
+            "duration_minutes": 120
+          },
+          {
+            "available_date": "2026-11-19",
+            "start_time": "09:00",
+            "duration_minutes": 120
+          }
+        ]
+      },
+      {
+        "course": "ENG102",
+        "topic": "Essay Structure",
+        "deadline": "2026-12-10",
+        "estimated_study_hours": 1.5,
+        "quiz_score": 75,
+        "task_weight": 50.0,
+        "availability": [
+          {
+            "available_date": "2026-11-16",
+            "start_time": "12:00",
+            "duration_minutes": 120
+          },
+          {
+            "available_date": "2026-11-17",
+            "start_time": "12:00",
+            "duration_minutes": 120
+          }
+        ]
+      }
+    ],
+    "completed_sessions": [
+      {
+        "course": "STAT201",
+        "topic": "Hypothesis Testing",
+        "date": "2026-11-16",
+        "start_time": "09:00",
+        "duration_minutes": 60,
+        "status": "completed"
+      },
+      {
+        "course": "ENG102",
+        "topic": "Essay Structure",
+        "date": "2026-11-16",
+        "start_time": "12:00",
+        "duration_minutes": 60,
+        "status": "completed"
+      }
+    ]
+  },
+  "raw_initial_response": null,
+  "raw_repair_response": null,
+  "raw_model_response": null,
+  "parsed_schedule": null,
+  "validation_errors_initial": [],
+  "validation_errors_final": [],
+  "validation_errors": [],
+  "validation_status": "not_available",
+  "repair_attempted": false,
+  "runtime_seconds": 0.00018879999697674066,
+  "status": "failure",
+  "success": false,
+  "error": "OLLAMA_MODEL is not set. Set it to an installed local Ollama model. No model was selected automatically.",
+  "log_path": "D:\\ge project\\sample_outputs\\llm_runs\\e69d425b27204bb183801d9ea4375c77.json",
+  "logging_error": null
+}
