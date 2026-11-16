@@ -15,3 +15,7 @@ status.
 No fabricated successful LLM run is included in this repository. A log only
 appears after a real call to Ollama. Unit tests write to temporary directories
 and do not create sample runs here.
+
+Real-model runs have been performed on the development machine (see the
+"Real run record" section in the top-level README). Their JSON logs are ignored
+by `.gitignore` and are not committed.
