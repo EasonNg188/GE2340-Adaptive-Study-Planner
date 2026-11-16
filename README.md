@@ -157,6 +157,16 @@ validation fails.
 
 Install Ollama from the official download page: <https://ollama.com/download>.
 
+To install the program and models outside the default user profile on Windows:
+
+```powershell
+OllamaSetup.exe /VERYSILENT /NORESTART /SUPPRESSMSGBOXES /DIR="D:\Ollama"
+setx OLLAMA_MODELS "D:\Ollama\models"
+```
+
+`setx` applies to new terminals; set `$env:OLLAMA_MODELS` in the current window
+if you start Ollama immediately.
+
 On Windows the installer starts the local service automatically. Verify it:
 
 ```powershell
@@ -298,8 +308,32 @@ This test requires a real local Ollama service and an installed model.
 7. Download the JSON run log.
 8. Record the reproducibility information below.
 
-A real run has not been performed or claimed as part of this repository's automated
-tests.
+The automated test suite still mocks `requests.post` and does not call a real
+model. A manual real-model run was performed on 2026-11-16; see the record
+below.
+
+## Real run record (2026-11-16)
+
+Environment: Ollama 0.40.16 on Windows 10, model `llama3.2:3b`, base URL
+`http://127.0.0.1:11434`, temperature 0, `format: "json"`, Python 3.12.
+
+| Run ID | Trigger | Result | Runtime |
+|---|---|---|---|
+| `82e0d8b64d5049daba5d265fd6420b8f` | first call after service start | failure: 120 s read timeout during cold model load | 120.07 s |
+| `252db55f1256491abe0d63416015cb4c` | direct `generate_llm_schedule` call, model warm | valid, 5 sessions, 4 unscheduled topics, no repair | 24.53 s |
+| `132ffc417b464cd09c34a72189b5e61f` | Streamlit **LLM Baseline** page button | valid, 5 sessions, 4 unscheduled topics, no repair | 25.23 s |
+
+Each run is written to `sample_outputs/llm_runs/<run_id>.json` and is excluded
+from version control by `.gitignore`.
+
+The first call can exceed the 120-second default while the model loads. Warm up
+before generating:
+
+```powershell
+ollama run llama3.2:3b "OK"
+```
+
+Alternatively, raise `DEFAULT_OLLAMA_TIMEOUT_SECONDS` in `config.py`.
 
 ## Reproducibility information
 
@@ -335,4 +369,8 @@ The per-run JSON log is designed to contain these details.
 - The LLM baseline is not automatically integrated into the adaptive optimizer.
 - The LLM may produce a valid schedule with different allocations or less study time
   than the rule-based planner; validity does not mean the schedules are equivalent.
-- No real LLM run is included in the repository.
+- LLM validation checks that a session is not before the current date, but does not
+  reject an earlier time on the current day. The rule-based scheduler clips today's
+  availability to the current minute.
+- Run logs are runtime artifacts ignored by `.gitignore` and are not committed. A
+  manual real-model run was performed on 2026-11-16; see the run record above.
