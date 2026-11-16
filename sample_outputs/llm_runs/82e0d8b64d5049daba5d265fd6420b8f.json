@@ -1,0 +1,161 @@
+{
+  "run_id": "82e0d8b64d5049daba5d265fd6420b8f",
+  "timestamp": "2026-11-16T06:01:45.417351+00:00",
+  "model_name": "llama3.2:3b",
+  "base_url": "http://127.0.0.1:11434",
+  "model_parameters": {
+    "temperature": 0.0,
+    "format": "json",
+    "stream": false,
+    "timeout_seconds": 120.0,
+    "endpoint": "/api/chat"
+  },
+  "prompt": "You are an LLM scheduling baseline in a synthetic study-planning experiment.\n\nCreate a study schedule using only the supplied synthetic data. Use the current date,\ndeadlines, quiz scores, task weights, estimated study hours, availability windows,\nand completed sessions. Use your own judgment; no rule-based schedule is provided.\n\nHard constraints:\n- Return JSON only. Do not use markdown fences, prose, or comments.\n- Use only courses and topics present in the input.\n- Every session must fit completely inside one availability window for its topic.\n- Sessions for different topics, and sessions for the same topic, must not overlap.\n- Do not overlap any completed session.\n- Each duration_minutes must be an integer from 30 to 90.\n- Do not schedule a session before the current date or after its topic deadline.\n- Total scheduled minutes must not exceed the duration of the availability window used.\n- If a topic cannot be scheduled, include it in unscheduled_topics with the remaining unscheduled minutes.\n- Give every session and unscheduled entry a short reason.\n\nReturn exactly this JSON structure:\n{\n  \"sessions\": [\n    {\n      \"course\": \"string\",\n      \"topic\": \"string\",\n      \"date\": \"YYYY-MM-DD\",\n      \"start_time\": \"HH:MM\",\n      \"duration_minutes\": 60,\n      \"reason\": \"short explanation\"\n    }\n  ],\n  \"unscheduled_topics\": [\n    {\n      \"course\": \"string\",\n      \"topic\": \"string\",\n      \"unscheduled_minutes\": 60,\n      \"reason\": \"string\"\n    }\n  ]\n}\n\nSynthetic input:\n{\n  \"current_date\": \"2026-11-16\",\n  \"topics\": [\n    {\n      \"course\": \"CS101\",\n      \"topic\": \"Recursion\",\n      \"deadline\": \"2026-12-05\",\n      \"estimated_study_hours\": 3.0,\n      \"quiz_score\": 45,\n      \"task_weight\": 80.0,\n      \"availability\": [\n        {\n          \"available_date\": \"2026-11-16\",\n          \"start_time\": \"18:00\",\n          \"duration_minutes\": 120\n        },\n        {\n          \"available_date\": \"2026-11-17\",\n          \"start_time\": \"18:00\",\n          \"duration_minutes\": 120\n        },\n        {\n          \"available_date\": \"2026-11-18\",\n          \"start_time\": \"18:00\",\n          \"duration_minutes\": 120\n        },\n        {\n          \"available_date\": \"2026-11-19\",\n          \"start_time\": \"18:00\",\n          \"duration_minutes\": 120\n        },\n        {\n          \"available_date\": \"2026-11-20\",\n          \"start_time\": \"18:00\",\n          \"duration_minutes\": 120\n        }\n      ]\n    },\n    {\n      \"course\": \"CS101\",\n      \"topic\": \"Sorting Algorithms\",\n      \"deadline\": \"2026-12-08\",\n      \"estimated_study_hours\": 2.0,\n      \"quiz_score\": 68,\n      \"task_weight\": 65.0,\n      \"availability\": [\n        {\n          \"available_date\": \"2026-11-16\",\n          \"start_time\": \"16:00\",\n          \"duration_minutes\": 120\n        },\n        {\n          \"available_date\": \"2026-11-17\",\n          \"start_time\": \"16:00\",\n          \"duration_minutes\": 120\n        }\n      ]\n    },\n    {\n      \"course\": \"STAT201\",\n      \"topic\": \"Probability Distributions\",\n      \"deadline\": \"2026-12-12\",\n      \"estimated_study_hours\": 4.0,\n      \"quiz_score\": 85,\n      \"task_weight\": 90.0,\n      \"availability\": [\n        {\n          \"available_date\": \"2026-11-16\",\n          \"start_time\": \"14:00\",\n          \"duration_minutes\": 120\n        },\n        {\n          \"available_date\": \"2026-11-17\",\n          \"start_time\": \"14:00\",\n          \"duration_minutes\": 120\n        }\n      ]\n    },\n    {\n      \"course\": \"STAT201\",\n      \"topic\": \"Hypothesis Testing\",\n      \"deadline\": \"2026-12-03\",\n      \"estimated_study_hours\": 2.5,\n      \"quiz_score\": 55,\n      \"task_weight\": 70.0,\n      \"availability\": [\n        {\n          \"available_date\": \"2026-11-16\",\n          \"start_time\": \"09:00\",\n          \"duration_minutes\": 120\n        },\n        {\n          \"available_date\": \"2026-11-17\",\n          \"start_time\": \"09:00\",\n          \"duration_minutes\": 120\n        },\n        {\n          \"available_date\": \"2026-11-18\",\n          \"start_time\": \"09:00\",\n          \"duration_minutes\": 120\n        },\n        {\n          \"available_date\": \"2026-11-19\",\n          \"start_time\": \"09:00\",\n          \"duration_minutes\": 120\n        }\n      ]\n    },\n    {\n      \"course\": \"ENG102\",\n      \"topic\": \"Essay Structure\",\n      \"deadline\": \"2026-12-10\",\n      \"estimated_study_hours\": 1.5,\n      \"quiz_score\": 75,\n      \"task_weight\": 50.0,\n      \"availability\": [\n        {\n          \"available_date\": \"2026-11-16\",\n          \"start_time\": \"12:00\",\n          \"duration_minutes\": 120\n        },\n        {\n          \"available_date\": \"2026-11-17\",\n          \"start_time\": \"12:00\",\n          \"duration_minutes\": 120\n        }\n      ]\n    }\n  ],\n  \"completed_sessions\": []\n}\n",
+  "repair_prompt": null,
+  "structured_input": {
+    "current_date": "2026-11-16",
+    "topics": [
+      {
+        "course": "CS101",
+        "topic": "Recursion",
+        "deadline": "2026-12-05",
+        "estimated_study_hours": 3.0,
+        "quiz_score": 45,
+        "task_weight": 80.0,
+        "availability": [
+          {
+            "available_date": "2026-11-16",
+            "start_time": "18:00",
+            "duration_minutes": 120
+          },
+          {
+            "available_date": "2026-11-17",
+            "start_time": "18:00",
+            "duration_minutes": 120
+          },
+          {
+            "available_date": "2026-11-18",
+            "start_time": "18:00",
+            "duration_minutes": 120
+          },
+          {
+            "available_date": "2026-11-19",
+            "start_time": "18:00",
+            "duration_minutes": 120
+          },
+          {
+            "available_date": "2026-11-20",
+            "start_time": "18:00",
+            "duration_minutes": 120
+          }
+        ]
+      },
+      {
+        "course": "CS101",
+        "topic": "Sorting Algorithms",
+        "deadline": "2026-12-08",
+        "estimated_study_hours": 2.0,
+        "quiz_score": 68,
+        "task_weight": 65.0,
+        "availability": [
+          {
+            "available_date": "2026-11-16",
+            "start_time": "16:00",
+            "duration_minutes": 120
+          },
+          {
+            "available_date": "2026-11-17",
+            "start_time": "16:00",
+            "duration_minutes": 120
+          }
+        ]
+      },
+      {
+        "course": "STAT201",
+        "topic": "Probability Distributions",
+        "deadline": "2026-12-12",
+        "estimated_study_hours": 4.0,
+        "quiz_score": 85,
+        "task_weight": 90.0,
+        "availability": [
+          {
+            "available_date": "2026-11-16",
+            "start_time": "14:00",
+            "duration_minutes": 120
+          },
+          {
+            "available_date": "2026-11-17",
+            "start_time": "14:00",
+            "duration_minutes": 120
+          }
+        ]
+      },
+      {
+        "course": "STAT201",
+        "topic": "Hypothesis Testing",
+        "deadline": "2026-12-03",
+        "estimated_study_hours": 2.5,
+        "quiz_score": 55,
+        "task_weight": 70.0,
+        "availability": [
+          {
+            "available_date": "2026-11-16",
+            "start_time": "09:00",
+            "duration_minutes": 120
+          },
+          {
+            "available_date": "2026-11-17",
+            "start_time": "09:00",
+            "duration_minutes": 120
+          },
+          {
+            "available_date": "2026-11-18",
+            "start_time": "09:00",
+            "duration_minutes": 120
+          },
+          {
+            "available_date": "2026-11-19",
+            "start_time": "09:00",
+            "duration_minutes": 120
+          }
+        ]
+      },
+      {
+        "course": "ENG102",
+        "topic": "Essay Structure",
+        "deadline": "2026-12-10",
+        "estimated_study_hours": 1.5,
+        "quiz_score": 75,
+        "task_weight": 50.0,
+        "availability": [
+          {
+            "available_date": "2026-11-16",
+            "start_time": "12:00",
+            "duration_minutes": 120
+          },
+          {
+            "available_date": "2026-11-17",
+            "start_time": "12:00",
+            "duration_minutes": 120
+          }
+        ]
+      }
+    ],
+    "completed_sessions": []
+  },
+  "raw_initial_response": null,
+  "raw_repair_response": null,
+  "raw_model_response": null,
+  "parsed_schedule": null,
+  "validation_errors_initial": [],
+  "validation_errors_final": [],
+  "validation_errors": [],
+  "validation_status": "not_available",
+  "repair_attempted": false,
+  "runtime_seconds": 120.06518310000001,
+  "status": "failure",
+  "success": false,
+  "error": "Could not reach Ollama at http://127.0.0.1:11434. Start Ollama and verify OLLAMA_BASE_URL. Details: HTTPConnectionPool(host='127.0.0.1', port=11434): Read timed out. (read timeout=120.0)",
+  "log_path": "D:\\ge project\\sample_outputs\\llm_runs\\82e0d8b64d5049daba5d265fd6420b8f.json",
+  "logging_error": null
+}
