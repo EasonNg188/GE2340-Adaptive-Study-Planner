@@ -1,5 +1,7 @@
 from datetime import date, time
 
+import pytest
+
 from config import PROJECT_ROOT
 from models import AvailabilityWindow, Topic
 from validation import (
@@ -35,6 +37,13 @@ def test_invalid_topic_fields():
     assert len(errors) == 3
 
 
+@pytest.mark.parametrize("field", ["estimated_hours", "task_weight"])
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_validate_topic_rejects_non_finite_values(field, value):
+    errors = validate_topic(make_topic(**{field: value}))
+    assert any("finite number" in error for error in errors)
+
+
 def test_availability_unknown_topic_and_cross_midnight():
     topic = make_topic()
     unknown = AvailabilityWindow(
@@ -67,12 +76,16 @@ def test_load_topics_and_availability_sample():
     )
     assert not errors
     assert len(topics) == 5
+    assert all(topic.deadline.year == 2027 for topic in topics)
     windows, errors = load_availability_csv(
         (PROJECT_ROOT / "sample_availability.csv").read_text(encoding="utf-8"),
         topics,
     )
     assert not errors
     assert len(windows) == 15
+    assert all(window.available_date.year == 2027 for window in windows)
+    deadlines = {topic.key: topic.deadline for topic in topics}
+    assert all(window.available_date <= deadlines[window.key] for window in windows)
 
 
 def test_load_topics_csv_reports_row_errors():
@@ -95,3 +108,36 @@ def test_load_availability_csv_requires_known_topic():
     windows, errors = load_availability_csv(text, topics)
     assert len(windows) == 1
     assert any("unknown topic" in error for error in errors)
+
+
+def test_load_topics_csv_rejects_missing_columns():
+    topics, errors = load_topics_csv("course_name,topic_name\nCS101,Recursion\n")
+    assert topics == []
+    assert any("missing required columns" in error for error in errors)
+
+
+def test_load_topics_csv_rejects_empty_input():
+    topics, errors = load_topics_csv("")
+    assert topics == []
+    assert any("no header row" in error for error in errors)
+
+
+def test_load_topics_csv_rejects_header_only_input():
+    topics, errors = load_topics_csv(
+        "course_name,topic_name,deadline,estimated_hours,quiz_score,task_weight\n"
+    )
+    assert topics == []
+    assert any("no topic rows" in error for error in errors)
+
+
+def test_load_availability_csv_reports_bad_time_and_duration():
+    topics = [make_topic()]
+    text = (
+        "course_name,topic_name,available_date,start_time,duration_minutes\n"
+        "CS101,Recursion,2026-11-16,6pm,60\n"
+        "CS101,Recursion,2026-11-16,18:00,0\n"
+    )
+    windows, errors = load_availability_csv(text, topics)
+    assert windows == []
+    assert any("HH:MM" in error for error in errors)
+    assert any("positive whole number" in error for error in errors)
