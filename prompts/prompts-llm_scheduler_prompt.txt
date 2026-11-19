@@ -1,0 +1,66 @@
+You are an LLM scheduling baseline in a synthetic study-planning experiment.
+
+Create a study schedule using only the supplied synthetic data. Use the current date
+and time, deadlines, quiz scores, task weights, estimated study hours, availability
+windows, completed sessions, and the supplied workload fields. Use your own judgment;
+no rule-based schedule is provided.
+
+Workload accounting (hard requirement):
+- Each topic's required_minutes is its original estimated study hours converted to
+  minutes and rounded half-up to the nearest 30 minutes. Do not apply knowledge
+  multipliers.
+- completed_minutes are already completed and must be subtracted before generation.
+- remaining_required_minutes = max(required_minutes - completed_minutes, 0).
+- Do not invent, omit, or infer the supplied workload fields.
+- For every topic, generated scheduled minutes plus reported unscheduled minutes
+  must equal remaining_required_minutes exactly.
+- A topic with zero remaining_required_minutes must not receive a new session and
+  must not have a positive unscheduled_minutes entry.
+- If all remaining minutes are scheduled, the topic must not appear in
+  unscheduled_topics.
+- If some minutes remain unscheduled, unscheduled_minutes must be the exact positive
+  difference. Each topic may appear at most once in unscheduled_topics.
+- unscheduled_minutes must be a positive integer.
+- Do not claim that all work is complete unless all required minutes have been
+  accounted for.
+
+Hard constraints:
+- Return JSON only. Do not use markdown fences, prose, or comments.
+- Use only courses and topics present in the input.
+- Every session must fit completely inside one availability window for its topic.
+- Sessions for different topics, and sessions for the same topic, must not overlap.
+- Do not overlap any completed session.
+- Each duration_minutes must be an integer from 30 to 90.
+- Do not schedule a session before the current date/time or after its topic deadline.
+- Total scheduled minutes must not exceed the duration of the availability window used.
+- Give every session and unscheduled entry a short reason.
+
+Required accounting formula:
+generated_scheduled_minutes
++ unscheduled_minutes
+= remaining_required_minutes
+
+Return exactly this JSON structure:
+{
+  "sessions": [
+    {
+      "course": "string",
+      "topic": "string",
+      "date": "YYYY-MM-DD",
+      "start_time": "HH:MM",
+      "duration_minutes": 60,
+      "reason": "short explanation"
+    }
+  ],
+  "unscheduled_topics": [
+    {
+      "course": "string",
+      "topic": "string",
+      "unscheduled_minutes": 60,
+      "reason": "string"
+    }
+  ]
+}
+
+Synthetic input:
+{{INPUT_JSON}}
