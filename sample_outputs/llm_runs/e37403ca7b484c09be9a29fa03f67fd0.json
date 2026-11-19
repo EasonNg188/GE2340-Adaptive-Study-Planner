@@ -1,0 +1,323 @@
+{
+  "run_id": "e37403ca7b484c09be9a29fa03f67fd0",
+  "timestamp": "2026-11-18T15:23:04.537714+00:00",
+  "model_name": "llama3.2:3b",
+  "base_url": "http://127.0.0.1:11434",
+  "model_parameters": {
+    "temperature": 0.0,
+    "format": "json",
+    "stream": false,
+    "timeout_seconds": 120.0,
+    "endpoint": "/api/chat"
+  },
+  "prompt": "You are an LLM scheduling baseline in a synthetic study-planning experiment.\n\nCreate a study schedule using only the supplied synthetic data. Use the current date,\ndeadlines, quiz scores, task weights, estimated study hours, availability windows,\ncompleted sessions, and the supplied workload fields. Use your own judgment; no\nrule-based schedule is provided.\n\nWorkload accounting (hard requirement):\n- Each topic's required_minutes is its original estimated study hours converted to\n  minutes and rounded half-up to the nearest 30 minutes. Do not apply knowledge\n  multipliers.\n- completed_minutes are already completed and must be subtracted before generation.\n- remaining_required_minutes = max(required_minutes - completed_minutes, 0).\n- Do not invent, omit, or infer the supplied workload fields.\n- For every topic, generated scheduled minutes plus reported unscheduled minutes\n  must equal remaining_required_minutes exactly.\n- A topic with zero remaining_required_minutes must not receive a new session and\n  must not have a positive unscheduled_minutes entry.\n- If all remaining minutes are scheduled, the topic must not appear in\n  unscheduled_topics.\n- If some minutes remain unscheduled, unscheduled_minutes must be the exact positive\n  difference. Each topic may appear at most once in unscheduled_topics.\n- unscheduled_minutes must be a positive integer.\n- Do not claim that all work is complete unless all required minutes have been\n  accounted for.\n\nHard constraints:\n- Return JSON only. Do not use markdown fences, prose, or comments.\n- Use only courses and topics present in the input.\n- Every session must fit completely inside one availability window for its topic.\n- Sessions for different topics, and sessions for the same topic, must not overlap.\n- Do not overlap any completed session.\n- Each duration_minutes must be an integer from 30 to 90.\n- Do not schedule a session before the current date or after its topic deadline.\n- Total scheduled minutes must not exceed the duration of the availability window used.\n- Give every session and unscheduled entry a short reason.\n\nRequired accounting formula:\ngenerated_scheduled_minutes\n+ unscheduled_minutes\n= remaining_required_minutes\n\nReturn exactly this JSON structure:\n{\n  \"sessions\": [\n    {\n      \"course\": \"string\",\n      \"topic\": \"string\",\n      \"date\": \"YYYY-MM-DD\",\n      \"start_time\": \"HH:MM\",\n      \"duration_minutes\": 60,\n      \"reason\": \"short explanation\"\n    }\n  ],\n  \"unscheduled_topics\": [\n    {\n      \"course\": \"string\",\n      \"topic\": \"string\",\n      \"unscheduled_minutes\": 60,\n      \"reason\": \"string\"\n    }\n  ]\n}\n\nSynthetic input:\n{\n  \"current_date\": \"2026-11-18\",\n  \"topics\": [\n    {\n      \"course\": \"CS101\",\n      \"topic\": \"Recursion\",\n      \"deadline\": \"2027-12-05\",\n      \"estimated_study_hours\": 3.0,\n      \"quiz_score\": 45,\n      \"task_weight\": 80.0,\n      \"required_minutes\": 180,\n      \"completed_minutes\": 0,\n      \"remaining_required_minutes\": 180,\n      \"availability\": [\n        {\n          \"available_date\": \"2027-11-18\",\n          \"start_time\": \"18:00\",\n          \"duration_minutes\": 120\n        },\n        {\n          \"available_date\": \"2027-11-19\",\n          \"start_time\": \"18:00\",\n          \"duration_minutes\": 120\n        },\n        {\n          \"available_date\": \"2027-11-20\",\n          \"start_time\": \"18:00\",\n          \"duration_minutes\": 120\n        },\n        {\n          \"available_date\": \"2027-11-21\",\n          \"start_time\": \"18:00\",\n          \"duration_minutes\": 120\n        },\n        {\n          \"available_date\": \"2027-11-22\",\n          \"start_time\": \"18:00\",\n          \"duration_minutes\": 120\n        }\n      ]\n    },\n    {\n      \"course\": \"CS101\",\n      \"topic\": \"Sorting Algorithms\",\n      \"deadline\": \"2027-12-08\",\n      \"estimated_study_hours\": 2.0,\n      \"quiz_score\": 68,\n      \"task_weight\": 65.0,\n      \"required_minutes\": 120,\n      \"completed_minutes\": 0,\n      \"remaining_required_minutes\": 120,\n      \"availability\": [\n        {\n          \"available_date\": \"2027-11-18\",\n          \"start_time\": \"16:00\",\n          \"duration_minutes\": 120\n        },\n        {\n          \"available_date\": \"2027-11-19\",\n          \"start_time\": \"16:00\",\n          \"duration_minutes\": 120\n        }\n      ]\n    },\n    {\n      \"course\": \"STAT201\",\n      \"topic\": \"Probability Distributions\",\n      \"deadline\": \"2027-12-12\",\n      \"estimated_study_hours\": 4.0,\n      \"quiz_score\": 85,\n      \"task_weight\": 90.0,\n      \"required_minutes\": 240,\n      \"completed_minutes\": 0,\n      \"remaining_required_minutes\": 240,\n      \"availability\": [\n        {\n          \"available_date\": \"2027-11-18\",\n          \"start_time\": \"14:00\",\n          \"duration_minutes\": 120\n        },\n        {\n          \"available_date\": \"2027-11-19\",\n          \"start_time\": \"14:00\",\n          \"duration_minutes\": 120\n        }\n      ]\n    },\n    {\n      \"course\": \"STAT201\",\n      \"topic\": \"Hypothesis Testing\",\n      \"deadline\": \"2027-12-03\",\n      \"estimated_study_hours\": 2.5,\n      \"quiz_score\": 55,\n      \"task_weight\": 70.0,\n      \"required_minutes\": 150,\n      \"completed_minutes\": 0,\n      \"remaining_required_minutes\": 150,\n      \"availability\": [\n        {\n          \"available_date\": \"2027-11-18\",\n          \"start_time\": \"09:00\",\n          \"duration_minutes\": 120\n        },\n        {\n          \"available_date\": \"2027-11-19\",\n          \"start_time\": \"09:00\",\n          \"duration_minutes\": 120\n        },\n        {\n          \"available_date\": \"2027-11-20\",\n          \"start_time\": \"09:00\",\n          \"duration_minutes\": 120\n        },\n        {\n          \"available_date\": \"2027-11-21\",\n          \"start_time\": \"09:00\",\n          \"duration_minutes\": 120\n        }\n      ]\n    },\n    {\n      \"course\": \"ENG102\",\n      \"topic\": \"Essay Structure\",\n      \"deadline\": \"2027-12-10\",\n      \"estimated_study_hours\": 1.5,\n      \"quiz_score\": 75,\n      \"task_weight\": 50.0,\n      \"required_minutes\": 90,\n      \"completed_minutes\": 0,\n      \"remaining_required_minutes\": 90,\n      \"availability\": [\n        {\n          \"available_date\": \"2027-11-18\",\n          \"start_time\": \"12:00\",\n          \"duration_minutes\": 120\n        },\n        {\n          \"available_date\": \"2027-11-19\",\n          \"start_time\": \"12:00\",\n          \"duration_minutes\": 120\n        }\n      ]\n    }\n  ],\n  \"completed_sessions\": []\n}\n",
+  "repair_prompt": "Your previous response was rejected by strict schedule validation.\n\nValidation errors:\n1. Workload mismatch for CS101 / Recursion: required remaining 180 minutes, but the response accounts for 90 minutes (60 scheduled + 30 unscheduled).\n2. Workload mismatch for CS101 / Sorting Algorithms: required remaining 120 minutes, but the response accounts for 60 minutes (60 scheduled + 0 unscheduled).\n3. Workload mismatch for STAT201 / Probability Distributions: required remaining 240 minutes, but the response accounts for 60 minutes (60 scheduled + 0 unscheduled).\n4. Workload mismatch for STAT201 / Hypothesis Testing: required remaining 150 minutes, but the response accounts for 60 minutes (60 scheduled + 0 unscheduled).\n5. Workload mismatch for ENG102 / Essay Structure: required remaining 90 minutes, but the response accounts for 30 minutes (30 scheduled + 0 unscheduled).\n\nOriginal scheduling request:\nYou are an LLM scheduling baseline in a synthetic study-planning experiment.\n\nCreate a study schedule using only the supplied synthetic data. Use the current date,\ndeadlines, quiz scores, task weights, estimated study hours, availability windows,\ncompleted sessions, and the supplied workload fields. Use your own judgment; no\nrule-based schedule is provided.\n\nWorkload accounting (hard requirement):\n- Each topic's required_minutes is its original estimated study hours converted to\n  minutes and rounded half-up to the nearest 30 minutes. Do not apply knowledge\n  multipliers.\n- completed_minutes are already completed and must be subtracted before generation.\n- remaining_required_minutes = max(required_minutes - completed_minutes, 0).\n- Do not invent, omit, or infer the supplied workload fields.\n- For every topic, generated scheduled minutes plus reported unscheduled minutes\n  must equal remaining_required_minutes exactly.\n- A topic with zero remaining_required_minutes must not receive a new session and\n  must not have a positive unscheduled_minutes entry.\n- If all remaining minutes are scheduled, the topic must not appear in\n  unscheduled_topics.\n- If some minutes remain unscheduled, unscheduled_minutes must be the exact positive\n  difference. Each topic may appear at most once in unscheduled_topics.\n- unscheduled_minutes must be a positive integer.\n- Do not claim that all work is complete unless all required minutes have been\n  accounted for.\n\nHard constraints:\n- Return JSON only. Do not use markdown fences, prose, or comments.\n- Use only courses and topics present in the input.\n- Every session must fit completely inside one availability window for its topic.\n- Sessions for different topics, and sessions for the same topic, must not overlap.\n- Do not overlap any completed session.\n- Each duration_minutes must be an integer from 30 to 90.\n- Do not schedule a session before the current date or after its topic deadline.\n- Total scheduled minutes must not exceed the duration of the availability window used.\n- Give every session and unscheduled entry a short reason.\n\nRequired accounting formula:\ngenerated_scheduled_minutes\n+ unscheduled_minutes\n= remaining_required_minutes\n\nReturn exactly this JSON structure:\n{\n  \"sessions\": [\n    {\n      \"course\": \"string\",\n      \"topic\": \"string\",\n      \"date\": \"YYYY-MM-DD\",\n      \"start_time\": \"HH:MM\",\n      \"duration_minutes\": 60,\n      \"reason\": \"short explanation\"\n    }\n  ],\n  \"unscheduled_topics\": [\n    {\n      \"course\": \"string\",\n      \"topic\": \"string\",\n      \"unscheduled_minutes\": 60,\n      \"reason\": \"string\"\n    }\n  ]\n}\n\nSynthetic input:\n{\n  \"current_date\": \"2026-11-18\",\n  \"topics\": [\n    {\n      \"course\": \"CS101\",\n      \"topic\": \"Recursion\",\n      \"deadline\": \"2027-12-05\",\n      \"estimated_study_hours\": 3.0,\n      \"quiz_score\": 45,\n      \"task_weight\": 80.0,\n      \"required_minutes\": 180,\n      \"completed_minutes\": 0,\n      \"remaining_required_minutes\": 180,\n      \"availability\": [\n        {\n          \"available_date\": \"2027-11-18\",\n          \"start_time\": \"18:00\",\n          \"duration_minutes\": 120\n        },\n        {\n          \"available_date\": \"2027-11-19\",\n          \"start_time\": \"18:00\",\n          \"duration_minutes\": 120\n        },\n        {\n          \"available_date\": \"2027-11-20\",\n          \"start_time\": \"18:00\",\n          \"duration_minutes\": 120\n        },\n        {\n          \"available_date\": \"2027-11-21\",\n          \"start_time\": \"18:00\",\n          \"duration_minutes\": 120\n        },\n        {\n          \"available_date\": \"2027-11-22\",\n          \"start_time\": \"18:00\",\n          \"duration_minutes\": 120\n        }\n      ]\n    },\n    {\n      \"course\": \"CS101\",\n      \"topic\": \"Sorting Algorithms\",\n      \"deadline\": \"2027-12-08\",\n      \"estimated_study_hours\": 2.0,\n      \"quiz_score\": 68,\n      \"task_weight\": 65.0,\n      \"required_minutes\": 120,\n      \"completed_minutes\": 0,\n      \"remaining_required_minutes\": 120,\n      \"availability\": [\n        {\n          \"available_date\": \"2027-11-18\",\n          \"start_time\": \"16:00\",\n          \"duration_minutes\": 120\n        },\n        {\n          \"available_date\": \"2027-11-19\",\n          \"start_time\": \"16:00\",\n          \"duration_minutes\": 120\n        }\n      ]\n    },\n    {\n      \"course\": \"STAT201\",\n      \"topic\": \"Probability Distributions\",\n      \"deadline\": \"2027-12-12\",\n      \"estimated_study_hours\": 4.0,\n      \"quiz_score\": 85,\n      \"task_weight\": 90.0,\n      \"required_minutes\": 240,\n      \"completed_minutes\": 0,\n      \"remaining_required_minutes\": 240,\n      \"availability\": [\n        {\n          \"available_date\": \"2027-11-18\",\n          \"start_time\": \"14:00\",\n          \"duration_minutes\": 120\n        },\n        {\n          \"available_date\": \"2027-11-19\",\n          \"start_time\": \"14:00\",\n          \"duration_minutes\": 120\n        }\n      ]\n    },\n    {\n      \"course\": \"STAT201\",\n      \"topic\": \"Hypothesis Testing\",\n      \"deadline\": \"2027-12-03\",\n      \"estimated_study_hours\": 2.5,\n      \"quiz_score\": 55,\n      \"task_weight\": 70.0,\n      \"required_minutes\": 150,\n      \"completed_minutes\": 0,\n      \"remaining_required_minutes\": 150,\n      \"availability\": [\n        {\n          \"available_date\": \"2027-11-18\",\n          \"start_time\": \"09:00\",\n          \"duration_minutes\": 120\n        },\n        {\n          \"available_date\": \"2027-11-19\",\n          \"start_time\": \"09:00\",\n          \"duration_minutes\": 120\n        },\n        {\n          \"available_date\": \"2027-11-20\",\n          \"start_time\": \"09:00\",\n          \"duration_minutes\": 120\n        },\n        {\n          \"available_date\": \"2027-11-21\",\n          \"start_time\": \"09:00\",\n          \"duration_minutes\": 120\n        }\n      ]\n    },\n    {\n      \"course\": \"ENG102\",\n      \"topic\": \"Essay Structure\",\n      \"deadline\": \"2027-12-10\",\n      \"estimated_study_hours\": 1.5,\n      \"quiz_score\": 75,\n      \"task_weight\": 50.0,\n      \"required_minutes\": 90,\n      \"completed_minutes\": 0,\n      \"remaining_required_minutes\": 90,\n      \"availability\": [\n        {\n          \"available_date\": \"2027-11-18\",\n          \"start_time\": \"12:00\",\n          \"duration_minutes\": 120\n        },\n        {\n          \"available_date\": \"2027-11-19\",\n          \"start_time\": \"12:00\",\n          \"duration_minutes\": 120\n        }\n      ]\n    }\n  ],\n  \"completed_sessions\": []\n}\n\n\nRejected response:\n{\n  \"sessions\": [\n    {\n      \"course\": \"CS101\",\n      \"topic\": \"Recursion\",\n      \"date\": \"2027-11-18\",\n      \"start_time\": \"18:00\",\n      \"duration_minutes\": 60,\n      \"reason\": \"Review notes and practice problems\"\n    },\n    {\n      \"course\": \"CS101\",\n      \"topic\": \"Sorting Algorithms\",\n      \"date\": \"2027-11-19\",\n      \"start_time\": \"16:00\",\n      \"duration_minutes\": 60,\n      \"reason\": \"Practice implementing algorithms\"\n    },\n    {\n      \"course\": \"STAT201\",\n      \"topic\": \"Probability Distributions\",\n      \"date\": \"2027-11-18\",\n      \"start_time\": \"14:00\",\n      \"duration_minutes\": 60,\n      \"reason\": \"Understand distribution types\"\n    },\n    {\n      \"course\": \"STAT201\",\n      \"topic\": \"Hypothesis Testing\",\n      \"date\": \"2027-11-19\",\n      \"start_time\": \"09:00\",\n      \"duration_minutes\": 60,\n      \"reason\": \"Learn about test statistics\"\n    },\n    {\n      \"course\": \"ENG102\",\n      \"topic\": \"Essay Structure\",\n      \"date\": \"2027-11-18\",\n      \"start_time\": \"12:00\",\n      \"duration_minutes\": 30,\n      \"reason\": \"Review essay outline\"\n    }\n  ],\n  \"unscheduled_topics\": [\n    {\n      \"course\": \"CS101\",\n      \"topic\": \"Recursion\",\n      \"unscheduled_minutes\": 30,\n      \"reason\": \"Catch up on practice problems\"\n    }\n  ]\n}\n\nReturn only corrected JSON using the required schema. Do not use markdown fences, prose, comments, or omit required fields. Do not introduce unknown courses, topics, or unavailable time slots. For every topic, generated_scheduled_minutes + unscheduled_minutes must equal remaining_required_minutes exactly.",
+  "structured_input": {
+    "current_date": "2026-11-18",
+    "topics": [
+      {
+        "course": "CS101",
+        "topic": "Recursion",
+        "deadline": "2027-12-05",
+        "estimated_study_hours": 3.0,
+        "quiz_score": 45,
+        "task_weight": 80.0,
+        "required_minutes": 180,
+        "completed_minutes": 0,
+        "remaining_required_minutes": 180,
+        "availability": [
+          {
+            "available_date": "2027-11-18",
+            "start_time": "18:00",
+            "duration_minutes": 120
+          },
+          {
+            "available_date": "2027-11-19",
+            "start_time": "18:00",
+            "duration_minutes": 120
+          },
+          {
+            "available_date": "2027-11-20",
+            "start_time": "18:00",
+            "duration_minutes": 120
+          },
+          {
+            "available_date": "2027-11-21",
+            "start_time": "18:00",
+            "duration_minutes": 120
+          },
+          {
+            "available_date": "2027-11-22",
+            "start_time": "18:00",
+            "duration_minutes": 120
+          }
+        ]
+      },
+      {
+        "course": "CS101",
+        "topic": "Sorting Algorithms",
+        "deadline": "2027-12-08",
+        "estimated_study_hours": 2.0,
+        "quiz_score": 68,
+        "task_weight": 65.0,
+        "required_minutes": 120,
+        "completed_minutes": 0,
+        "remaining_required_minutes": 120,
+        "availability": [
+          {
+            "available_date": "2027-11-18",
+            "start_time": "16:00",
+            "duration_minutes": 120
+          },
+          {
+            "available_date": "2027-11-19",
+            "start_time": "16:00",
+            "duration_minutes": 120
+          }
+        ]
+      },
+      {
+        "course": "STAT201",
+        "topic": "Probability Distributions",
+        "deadline": "2027-12-12",
+        "estimated_study_hours": 4.0,
+        "quiz_score": 85,
+        "task_weight": 90.0,
+        "required_minutes": 240,
+        "completed_minutes": 0,
+        "remaining_required_minutes": 240,
+        "availability": [
+          {
+            "available_date": "2027-11-18",
+            "start_time": "14:00",
+            "duration_minutes": 120
+          },
+          {
+            "available_date": "2027-11-19",
+            "start_time": "14:00",
+            "duration_minutes": 120
+          }
+        ]
+      },
+      {
+        "course": "STAT201",
+        "topic": "Hypothesis Testing",
+        "deadline": "2027-12-03",
+        "estimated_study_hours": 2.5,
+        "quiz_score": 55,
+        "task_weight": 70.0,
+        "required_minutes": 150,
+        "completed_minutes": 0,
+        "remaining_required_minutes": 150,
+        "availability": [
+          {
+            "available_date": "2027-11-18",
+            "start_time": "09:00",
+            "duration_minutes": 120
+          },
+          {
+            "available_date": "2027-11-19",
+            "start_time": "09:00",
+            "duration_minutes": 120
+          },
+          {
+            "available_date": "2027-11-20",
+            "start_time": "09:00",
+            "duration_minutes": 120
+          },
+          {
+            "available_date": "2027-11-21",
+            "start_time": "09:00",
+            "duration_minutes": 120
+          }
+        ]
+      },
+      {
+        "course": "ENG102",
+        "topic": "Essay Structure",
+        "deadline": "2027-12-10",
+        "estimated_study_hours": 1.5,
+        "quiz_score": 75,
+        "task_weight": 50.0,
+        "required_minutes": 90,
+        "completed_minutes": 0,
+        "remaining_required_minutes": 90,
+        "availability": [
+          {
+            "available_date": "2027-11-18",
+            "start_time": "12:00",
+            "duration_minutes": 120
+          },
+          {
+            "available_date": "2027-11-19",
+            "start_time": "12:00",
+            "duration_minutes": 120
+          }
+        ]
+      }
+    ],
+    "completed_sessions": []
+  },
+  "raw_initial_response": "{\n  \"sessions\": [\n    {\n      \"course\": \"CS101\",\n      \"topic\": \"Recursion\",\n      \"date\": \"2027-11-18\",\n      \"start_time\": \"18:00\",\n      \"duration_minutes\": 60,\n      \"reason\": \"Review notes and practice problems\"\n    },\n    {\n      \"course\": \"CS101\",\n      \"topic\": \"Sorting Algorithms\",\n      \"date\": \"2027-11-19\",\n      \"start_time\": \"16:00\",\n      \"duration_minutes\": 60,\n      \"reason\": \"Practice implementing algorithms\"\n    },\n    {\n      \"course\": \"STAT201\",\n      \"topic\": \"Probability Distributions\",\n      \"date\": \"2027-11-18\",\n      \"start_time\": \"14:00\",\n      \"duration_minutes\": 60,\n      \"reason\": \"Understand distribution types\"\n    },\n    {\n      \"course\": \"STAT201\",\n      \"topic\": \"Hypothesis Testing\",\n      \"date\": \"2027-11-19\",\n      \"start_time\": \"09:00\",\n      \"duration_minutes\": 60,\n      \"reason\": \"Learn about test statistics\"\n    },\n    {\n      \"course\": \"ENG102\",\n      \"topic\": \"Essay Structure\",\n      \"date\": \"2027-11-18\",\n      \"start_time\": \"12:00\",\n      \"duration_minutes\": 30,\n      \"reason\": \"Review essay outline\"\n    }\n  ],\n  \"unscheduled_topics\": [\n    {\n      \"course\": \"CS101\",\n      \"topic\": \"Recursion\",\n      \"unscheduled_minutes\": 30,\n      \"reason\": \"Catch up on practice problems\"\n    }\n  ]\n}",
+  "raw_repair_response": "{\n  \"sessions\": [\n    {\n      \"course\": \"CS101\",\n      \"topic\": \"Recursion\",\n      \"date\": \"2027-11-18\",\n      \"start_time\": \"18:00\",\n      \"duration_minutes\": 60,\n      \"reason\": \"Review notes and practice problems\"\n    },\n    {\n      \"course\": \"CS101\",\n      \"topic\": \"Sorting Algorithms\",\n      \"date\": \"2027-11-19\",\n      \"start_time\": \"16:00\",\n      \"duration_minutes\": 60,\n      \"reason\": \"Practice implementing algorithms\"\n    },\n    {\n      \"course\": \"STAT201\",\n      \"topic\": \"Probability Distributions\",\n      \"date\": \"2027-11-18\",\n      \"start_time\": \"14:00\",\n      \"duration_minutes\": 60,\n      \"reason\": \"Understand distribution types\"\n    },\n    {\n      \"course\": \"STAT201\",\n      \"topic\": \"Hypothesis Testing\",\n      \"date\": \"2027-11-19\",\n      \"start_time\": \"09:00\",\n      \"duration_minutes\": 60,\n      \"reason\": \"Learn about test statistics\"\n    },\n    {\n      \"course\": \"ENG102\",\n      \"topic\": \"Essay Structure\",\n      \"date\": \"2027-11-18\",\n      \"start_time\": \"12:00\",\n      \"duration_minutes\": 60,\n      \"reason\": \"Review essay outline\"\n    }\n  ],\n  \"unscheduled_topics\": [\n    {\n      \"course\": \"CS101\",\n      \"topic\": \"Recursion\",\n      \"unscheduled_minutes\": 30,\n      \"reason\": \"Catch up on practice problems\"\n    }\n  ]\n}",
+  "raw_model_response": "{\n  \"sessions\": [\n    {\n      \"course\": \"CS101\",\n      \"topic\": \"Recursion\",\n      \"date\": \"2027-11-18\",\n      \"start_time\": \"18:00\",\n      \"duration_minutes\": 60,\n      \"reason\": \"Review notes and practice problems\"\n    },\n    {\n      \"course\": \"CS101\",\n      \"topic\": \"Sorting Algorithms\",\n      \"date\": \"2027-11-19\",\n      \"start_time\": \"16:00\",\n      \"duration_minutes\": 60,\n      \"reason\": \"Practice implementing algorithms\"\n    },\n    {\n      \"course\": \"STAT201\",\n      \"topic\": \"Probability Distributions\",\n      \"date\": \"2027-11-18\",\n      \"start_time\": \"14:00\",\n      \"duration_minutes\": 60,\n      \"reason\": \"Understand distribution types\"\n    },\n    {\n      \"course\": \"STAT201\",\n      \"topic\": \"Hypothesis Testing\",\n      \"date\": \"2027-11-19\",\n      \"start_time\": \"09:00\",\n      \"duration_minutes\": 60,\n      \"reason\": \"Learn about test statistics\"\n    },\n    {\n      \"course\": \"ENG102\",\n      \"topic\": \"Essay Structure\",\n      \"date\": \"2027-11-18\",\n      \"start_time\": \"12:00\",\n      \"duration_minutes\": 60,\n      \"reason\": \"Review essay outline\"\n    }\n  ],\n  \"unscheduled_topics\": [\n    {\n      \"course\": \"CS101\",\n      \"topic\": \"Recursion\",\n      \"unscheduled_minutes\": 30,\n      \"reason\": \"Catch up on practice problems\"\n    }\n  ]\n}",
+  "parsed_schedule": {
+    "sessions": [
+      {
+        "course": "CS101",
+        "topic": "Recursion",
+        "date": "2027-11-18",
+        "start_time": "18:00",
+        "duration_minutes": 60,
+        "reason": "Review notes and practice problems"
+      },
+      {
+        "course": "CS101",
+        "topic": "Sorting Algorithms",
+        "date": "2027-11-19",
+        "start_time": "16:00",
+        "duration_minutes": 60,
+        "reason": "Practice implementing algorithms"
+      },
+      {
+        "course": "STAT201",
+        "topic": "Probability Distributions",
+        "date": "2027-11-18",
+        "start_time": "14:00",
+        "duration_minutes": 60,
+        "reason": "Understand distribution types"
+      },
+      {
+        "course": "STAT201",
+        "topic": "Hypothesis Testing",
+        "date": "2027-11-19",
+        "start_time": "09:00",
+        "duration_minutes": 60,
+        "reason": "Learn about test statistics"
+      },
+      {
+        "course": "ENG102",
+        "topic": "Essay Structure",
+        "date": "2027-11-18",
+        "start_time": "12:00",
+        "duration_minutes": 60,
+        "reason": "Review essay outline"
+      }
+    ],
+    "unscheduled_topics": [
+      {
+        "course": "CS101",
+        "topic": "Recursion",
+        "unscheduled_minutes": 30,
+        "reason": "Catch up on practice problems"
+      }
+    ]
+  },
+  "accounting_summary": {
+    "required_minutes": 780,
+    "completed_minutes": 0,
+    "required_remaining_minutes": 780,
+    "scheduled_minutes": 300,
+    "reported_unscheduled_minutes": 30,
+    "accounted_minutes": 330,
+    "coverage_percentage": 42.31,
+    "is_complete": false,
+    "has_invalid_values": false,
+    "topics": [
+      {
+        "course": "CS101",
+        "topic": "Recursion",
+        "required_minutes": 180,
+        "completed_minutes": 0,
+        "remaining_required_minutes": 180,
+        "scheduled_minutes": 60,
+        "reported_unscheduled_minutes": 30,
+        "accounted_minutes": 90,
+        "accounting_status": "Under-accounted",
+        "is_complete": false,
+        "values_valid": true
+      },
+      {
+        "course": "CS101",
+        "topic": "Sorting Algorithms",
+        "required_minutes": 120,
+        "completed_minutes": 0,
+        "remaining_required_minutes": 120,
+        "scheduled_minutes": 60,
+        "reported_unscheduled_minutes": 0,
+        "accounted_minutes": 60,
+        "accounting_status": "Under-accounted",
+        "is_complete": false,
+        "values_valid": true
+      },
+      {
+        "course": "STAT201",
+        "topic": "Probability Distributions",
+        "required_minutes": 240,
+        "completed_minutes": 0,
+        "remaining_required_minutes": 240,
+        "scheduled_minutes": 60,
+        "reported_unscheduled_minutes": 0,
+        "accounted_minutes": 60,
+        "accounting_status": "Under-accounted",
+        "is_complete": false,
+        "values_valid": true
+      },
+      {
+        "course": "STAT201",
+        "topic": "Hypothesis Testing",
+        "required_minutes": 150,
+        "completed_minutes": 0,
+        "remaining_required_minutes": 150,
+        "scheduled_minutes": 60,
+        "reported_unscheduled_minutes": 0,
+        "accounted_minutes": 60,
+        "accounting_status": "Under-accounted",
+        "is_complete": false,
+        "values_valid": true
+      },
+      {
+        "course": "ENG102",
+        "topic": "Essay Structure",
+        "required_minutes": 90,
+        "completed_minutes": 0,
+        "remaining_required_minutes": 90,
+        "scheduled_minutes": 60,
+        "reported_unscheduled_minutes": 0,
+        "accounted_minutes": 60,
+        "accounting_status": "Under-accounted",
+        "is_complete": false,
+        "values_valid": true
+      }
+    ]
+  },
+  "validation_errors_initial": [
+    "Workload mismatch for CS101 / Recursion: required remaining 180 minutes, but the response accounts for 90 minutes (60 scheduled + 30 unscheduled).",
+    "Workload mismatch for CS101 / Sorting Algorithms: required remaining 120 minutes, but the response accounts for 60 minutes (60 scheduled + 0 unscheduled).",
+    "Workload mismatch for STAT201 / Probability Distributions: required remaining 240 minutes, but the response accounts for 60 minutes (60 scheduled + 0 unscheduled).",
+    "Workload mismatch for STAT201 / Hypothesis Testing: required remaining 150 minutes, but the response accounts for 60 minutes (60 scheduled + 0 unscheduled).",
+    "Workload mismatch for ENG102 / Essay Structure: required remaining 90 minutes, but the response accounts for 30 minutes (30 scheduled + 0 unscheduled)."
+  ],
+  "validation_errors_final": [
+    "Workload mismatch for CS101 / Recursion: required remaining 180 minutes, but the response accounts for 90 minutes (60 scheduled + 30 unscheduled).",
+    "Workload mismatch for CS101 / Sorting Algorithms: required remaining 120 minutes, but the response accounts for 60 minutes (60 scheduled + 0 unscheduled).",
+    "Workload mismatch for STAT201 / Probability Distributions: required remaining 240 minutes, but the response accounts for 60 minutes (60 scheduled + 0 unscheduled).",
+    "Workload mismatch for STAT201 / Hypothesis Testing: required remaining 150 minutes, but the response accounts for 60 minutes (60 scheduled + 0 unscheduled).",
+    "Workload mismatch for ENG102 / Essay Structure: required remaining 90 minutes, but the response accounts for 60 minutes (60 scheduled + 0 unscheduled)."
+  ],
+  "validation_errors": [
+    "Workload mismatch for CS101 / Recursion: required remaining 180 minutes, but the response accounts for 90 minutes (60 scheduled + 30 unscheduled).",
+    "Workload mismatch for CS101 / Sorting Algorithms: required remaining 120 minutes, but the response accounts for 60 minutes (60 scheduled + 0 unscheduled).",
+    "Workload mismatch for STAT201 / Probability Distributions: required remaining 240 minutes, but the response accounts for 60 minutes (60 scheduled + 0 unscheduled).",
+    "Workload mismatch for STAT201 / Hypothesis Testing: required remaining 150 minutes, but the response accounts for 60 minutes (60 scheduled + 0 unscheduled).",
+    "Workload mismatch for ENG102 / Essay Structure: required remaining 90 minutes, but the response accounts for 60 minutes (60 scheduled + 0 unscheduled)."
+  ],
+  "validation_status": "invalid",
+  "repair_attempted": true,
+  "runtime_seconds": 66.22621179999987,
+  "status": "failure",
+  "success": false,
+  "error": "LLM response remained invalid after one repair attempt.",
+  "log_path": "sample_outputs/llm_runs/e37403ca7b484c09be9a29fa03f67fd0.json",
+  "logging_error": null
+}
