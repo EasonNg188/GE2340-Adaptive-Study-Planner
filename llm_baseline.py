@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import json
-import math
 import os
 import re
 import time as time_module
 import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
+from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -23,15 +23,22 @@ from config import (
     LLM_RUN_DIR,
     OLLAMA_BASE_URL_ENV,
     OLLAMA_MODEL_ENV,
+    PROJECT_ROOT,
 )
-from models import AvailabilityWindow, StudySession, Topic
+from models import AvailabilityWindow, StudySession, Topic, TopicKey, topic_key
+from validation import format_errors, validate_dataset
 
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 TIME_RE = re.compile(r"^\d{2}:\d{2}$")
+DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$")
 
 
 class LLMError(RuntimeError):
     """Base class for LLM baseline errors."""
+
+
+class LLMInputError(LLMError):
+    """Raised when planner input is invalid before any Ollama request."""
 
 
 class LLMConfigurationError(LLMError):
@@ -85,6 +92,266 @@ class OllamaConfig:
         }
 
 
+def _llm_round_minutes_to_30(raw_minutes: Decimal) -> int:
+    """Round raw minutes half-up to the nearest 30 without a minimum block."""
+    if raw_minutes <= 0:
+        return 0
+    blocks = (raw_minutes / Decimal(30)).quantize(
+        Decimal("1"), rounding=ROUND_HALF_UP
+    )
+    return int(blocks) * 30
+
+
+def llm_required_minutes(estimated_hours: float | int | Decimal) -> int:
+    """Return original estimated minutes rounded half-up to the nearest 30."""
+    raw_minutes = Decimal(str(estimated_hours)) * Decimal(60)
+    return _llm_round_minutes_to_30(raw_minutes)
+
+
+def _ceil_to_next_minute(value: datetime) -> datetime:
+    floored = value.replace(second=0, microsecond=0)
+    if value > floored:
+        floored += timedelta(minutes=1)
+    return floored
+
+
+def _is_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _non_negative_int(value: Any) -> int | None:
+    if not _is_int(value) or value < 0:
+        return None
+    return value
+
+
+def _positive_int(value: Any) -> int | None:
+    if not _is_int(value) or value <= 0:
+        return None
+    return value
+
+
+def _valid_duration(value: Any) -> bool:
+    return _is_int(value) and 30 <= value <= 90
+
+
+@dataclass(frozen=True)
+class TopicAccounting:
+    course: str
+    topic: str
+    required_minutes: int
+    completed_minutes: int
+    remaining_required_minutes: int
+    scheduled_minutes: int
+    reported_unscheduled_minutes: int
+    values_valid: bool = True
+
+    @property
+    def accounted_minutes(self) -> int:
+        return self.scheduled_minutes + self.reported_unscheduled_minutes
+
+    @property
+    def is_complete(self) -> bool:
+        return (
+            self.values_valid
+            and self.accounted_minutes == self.remaining_required_minutes
+        )
+
+    @property
+    def accounting_status(self) -> str:
+        if not self.values_valid:
+            return "Invalid accounting input"
+        if self.is_complete:
+            return "Complete"
+        if self.accounted_minutes < self.remaining_required_minutes:
+            return "Under-accounted"
+        return "Over-accounted"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "course": self.course,
+            "topic": self.topic,
+            "required_minutes": self.required_minutes,
+            "completed_minutes": self.completed_minutes,
+            "remaining_required_minutes": self.remaining_required_minutes,
+            "scheduled_minutes": self.scheduled_minutes,
+            "reported_unscheduled_minutes": self.reported_unscheduled_minutes,
+            "accounted_minutes": self.accounted_minutes,
+            "accounting_status": self.accounting_status,
+            "is_complete": self.is_complete,
+            "values_valid": self.values_valid,
+        }
+
+
+@dataclass(frozen=True)
+class AccountingSummary:
+    topics: list[TopicAccounting]
+
+    @property
+    def total_required_minutes(self) -> int:
+        return sum(row.required_minutes for row in self.topics)
+
+    @property
+    def total_completed_minutes(self) -> int:
+        return sum(row.completed_minutes for row in self.topics)
+
+    @property
+    def total_remaining_required_minutes(self) -> int:
+        return sum(row.remaining_required_minutes for row in self.topics)
+
+    @property
+    def total_scheduled_minutes(self) -> int:
+        return sum(row.scheduled_minutes for row in self.topics)
+
+    @property
+    def total_reported_unscheduled_minutes(self) -> int:
+        return sum(row.reported_unscheduled_minutes for row in self.topics)
+
+    @property
+    def total_accounted_minutes(self) -> int:
+        return sum(row.accounted_minutes for row in self.topics)
+
+    @property
+    def has_invalid_values(self) -> bool:
+        return any(not row.values_valid for row in self.topics)
+
+    @property
+    def coverage_percentage(self) -> float | None:
+        if not self.topics or self.has_invalid_values:
+            return None
+        remaining = self.total_remaining_required_minutes
+        accounted = self.total_accounted_minutes
+        if remaining == 0:
+            return 100.0 if accounted == 0 else 0.0
+        percentage = Decimal(accounted) / Decimal(remaining) * Decimal(100)
+        return float(percentage.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+    @property
+    def is_complete(self) -> bool:
+        return bool(self.topics) and all(row.is_complete for row in self.topics)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "required_minutes": self.total_required_minutes,
+            "completed_minutes": self.total_completed_minutes,
+            "required_remaining_minutes": self.total_remaining_required_minutes,
+            "scheduled_minutes": self.total_scheduled_minutes,
+            "reported_unscheduled_minutes": self.total_reported_unscheduled_minutes,
+            "accounted_minutes": self.total_accounted_minutes,
+            "coverage_percentage": self.coverage_percentage,
+            "is_complete": self.is_complete,
+            "has_invalid_values": self.has_invalid_values,
+            "topics": [row.to_dict() for row in self.topics],
+        }
+
+
+def _structured_topic_map(
+    structured_input: Mapping[str, Any],
+) -> dict[TopicKey, Mapping[str, Any]]:
+    topic_map: dict[TopicKey, Mapping[str, Any]] = {}
+    if not isinstance(structured_input, dict):
+        return topic_map
+    topics_payload = structured_input.get("topics")
+    if not isinstance(topics_payload, list):
+        return topic_map
+    for topic in topics_payload:
+        if not isinstance(topic, dict):
+            continue
+        course = topic.get("course")
+        name = topic.get("topic")
+        if isinstance(course, str) and isinstance(name, str):
+            topic_map[topic_key(course, name)] = topic
+    return topic_map
+
+
+def _entry_topic_key(entry: Mapping[str, Any]) -> TopicKey | None:
+    course = entry.get("course")
+    name = entry.get("topic")
+    if not isinstance(course, str) or not isinstance(name, str):
+        return None
+    return topic_key(course, name)
+
+
+def _accounting_scheduled_minutes(value: Any) -> int | None:
+    if not _is_int(value) or value < 0:
+        return None
+    return value
+
+
+def build_accounting_summary(
+    structured_input: Mapping[str, Any],
+    schedule: Mapping[str, Any] | None,
+) -> AccountingSummary:
+    """Build a diagnostic accounting summary without modifying the LLM output."""
+    topic_map = _structured_topic_map(structured_input)
+    scheduled_by_topic: dict[TopicKey, int] = {}
+    reported_by_topic: dict[TopicKey, int] = {}
+    invalid_topics: set[TopicKey] = set()
+
+    if isinstance(schedule, dict):
+        sessions = schedule.get("sessions")
+        if isinstance(sessions, list):
+            for entry in sessions:
+                if not isinstance(entry, dict):
+                    continue
+                key = _entry_topic_key(entry)
+                if key is None or key not in topic_map:
+                    continue
+                duration = entry.get("duration_minutes")
+                minutes = _accounting_scheduled_minutes(duration)
+                if minutes is None:
+                    invalid_topics.add(key)
+                    continue
+                scheduled_by_topic[key] = scheduled_by_topic.get(key, 0) + minutes
+                if not _valid_duration(duration):
+                    invalid_topics.add(key)
+
+        unscheduled = schedule.get("unscheduled_topics")
+        if isinstance(unscheduled, list):
+            seen: set[TopicKey] = set()
+            for entry in unscheduled:
+                if not isinstance(entry, dict):
+                    continue
+                key = _entry_topic_key(entry)
+                if key is None or key not in topic_map:
+                    continue
+                minutes = _positive_int(entry.get("unscheduled_minutes"))
+                if key in seen:
+                    invalid_topics.add(key)
+                    continue
+                seen.add(key)
+                if minutes is None:
+                    invalid_topics.add(key)
+                    continue
+                reported_by_topic[key] = minutes
+
+    rows: list[TopicAccounting] = []
+    for key, topic in topic_map.items():
+        required = _non_negative_int(topic.get("required_minutes"))
+        completed = _non_negative_int(topic.get("completed_minutes"))
+        remaining = _non_negative_int(topic.get("remaining_required_minutes"))
+        values_valid = (
+            required is not None
+            and completed is not None
+            and remaining is not None
+            and remaining == max(required - completed, 0)
+            and key not in invalid_topics
+        )
+        rows.append(
+            TopicAccounting(
+                course=str(topic.get("course")),
+                topic=str(topic.get("topic")),
+                required_minutes=required or 0,
+                completed_minutes=completed or 0,
+                remaining_required_minutes=remaining or 0,
+                scheduled_minutes=scheduled_by_topic.get(key, 0),
+                reported_unscheduled_minutes=reported_by_topic.get(key, 0),
+                values_valid=values_valid,
+            )
+        )
+    return AccountingSummary(topics=rows)
+
+
 @dataclass
 class LLMRunResult:
     run_id: str
@@ -98,6 +365,7 @@ class LLMRunResult:
     raw_initial_response: str | None = None
     raw_repair_response: str | None = None
     parsed_schedule: dict[str, Any] | None = None
+    accounting_summary: AccountingSummary | None = None
     validation_errors_initial: list[str] = field(default_factory=list)
     validation_errors_final: list[str] = field(default_factory=list)
     repair_attempted: bool = False
@@ -121,9 +389,9 @@ class LLMRunResult:
 
     @property
     def validation_errors(self) -> list[str]:
-        if self.validation_errors_final:
-            return self.validation_errors_final
-        return self.validation_errors_initial
+        if self.status == "success":
+            return []
+        return self.validation_errors_final or self.validation_errors_initial
 
     @property
     def raw_model_response(self) -> str | None:
@@ -143,6 +411,11 @@ class LLMRunResult:
             "raw_repair_response": self.raw_repair_response,
             "raw_model_response": self.raw_model_response,
             "parsed_schedule": self.parsed_schedule,
+            "accounting_summary": (
+                self.accounting_summary.to_dict()
+                if self.accounting_summary is not None
+                else None
+            ),
             "validation_errors_initial": self.validation_errors_initial,
             "validation_errors_final": self.validation_errors_final,
             "validation_errors": self.validation_errors,
@@ -162,10 +435,22 @@ def build_structured_input(
     availability: Sequence[AvailabilityWindow],
     completed_sessions: Sequence[StudySession],
     current_date: date,
+    current_datetime: datetime | None = None,
 ) -> dict[str, Any]:
-    availability_by_topic: dict[tuple[str, str], list[AvailabilityWindow]] = {}
+    if current_datetime is None:
+        current_datetime = datetime.combine(current_date, time.min)
+    current_datetime = _ceil_to_next_minute(current_datetime)
+
+    availability_by_topic: dict[TopicKey, list[AvailabilityWindow]] = {}
     for window in availability:
         availability_by_topic.setdefault(window.key, []).append(window)
+
+    completed_by_topic: dict[TopicKey, int] = {}
+    for session in completed_sessions:
+        if session.completed:
+            completed_by_topic[session.key] = (
+                completed_by_topic.get(session.key, 0) + session.duration_minutes
+            )
 
     topic_payload: list[dict[str, Any]] = []
     for topic in topics:
@@ -173,6 +458,8 @@ def build_structured_input(
             availability_by_topic.get(topic.key, []),
             key=lambda item: (item.available_date, item.start_time),
         )
+        required_minutes = llm_required_minutes(topic.estimated_hours)
+        completed_minutes = completed_by_topic.get(topic.key, 0)
         topic_payload.append(
             {
                 "course": topic.course_name,
@@ -181,6 +468,11 @@ def build_structured_input(
                 "estimated_study_hours": topic.estimated_hours,
                 "quiz_score": topic.quiz_score,
                 "task_weight": topic.task_weight,
+                "required_minutes": required_minutes,
+                "completed_minutes": completed_minutes,
+                "remaining_required_minutes": max(
+                    required_minutes - completed_minutes, 0
+                ),
                 "availability": [
                     {
                         "available_date": window.available_date.isoformat(),
@@ -208,7 +500,8 @@ def build_structured_input(
     ]
 
     return {
-        "current_date": current_date.isoformat(),
+        "current_date": current_datetime.date().isoformat(),
+        "current_datetime": current_datetime.isoformat(timespec="minutes"),
         "topics": topic_payload,
         "completed_sessions": completed_payload,
     }
@@ -246,7 +539,9 @@ def build_repair_prompt(
         f"{raw_response}\n\n"
         "Return only corrected JSON using the required schema. Do not use markdown "
         "fences, prose, comments, or omit required fields. Do not introduce unknown "
-        "courses, topics, or unavailable time slots."
+        "courses, topics, or unavailable time slots. For every topic, "
+        "generated_scheduled_minutes + unscheduled_minutes must equal "
+        "remaining_required_minutes exactly."
     )
 
 
@@ -322,12 +617,13 @@ def _strict_time(value: Any) -> time | None:
         return None
 
 
-def _valid_duration(value: Any) -> bool:
-    return (
-        not isinstance(value, bool)
-        and isinstance(value, int)
-        and 30 <= value <= 90
-    )
+def _strict_datetime(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not DATETIME_RE.fullmatch(value):
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%dT%H:%M")
+    except ValueError:
+        return None
 
 
 def validate_llm_schedule(
@@ -351,21 +647,50 @@ def validate_llm_schedule(
     topics_payload = structured_input.get("topics")
     if not isinstance(topics_payload, list):
         return errors + ["Structured input does not contain a topics list."]
+    if not topics_payload:
+        return errors + ["Structured input does not contain any topics."]
 
-    topic_map: dict[tuple[str, str], Mapping[str, Any]] = {}
-    for topic in topics_payload:
-        if not isinstance(topic, dict):
+    topic_map = _structured_topic_map(structured_input)
+    if not topic_map:
+        return errors + ["Structured input does not contain any valid topics."]
+    remaining_by_topic: dict[TopicKey, int] = {}
+    for key, topic in topic_map.items():
+        required = _non_negative_int(topic.get("required_minutes"))
+        completed = _non_negative_int(topic.get("completed_minutes"))
+        remaining = _non_negative_int(topic.get("remaining_required_minutes"))
+        if required is None or completed is None or remaining is None:
+            errors.append(
+                f"Structured input for {key[0]} / {key[1]} is missing valid "
+                "required_minutes, completed_minutes, or remaining_required_minutes."
+            )
             continue
-        course = topic.get("course")
-        name = topic.get("topic")
-        if isinstance(course, str) and isinstance(name, str):
-            topic_map[(course, name)] = topic
+        expected_remaining = max(required - completed, 0)
+        if remaining != expected_remaining:
+            errors.append(
+                f"Structured input for {key[0]} / {key[1]} has inconsistent "
+                f"workload fields: remaining_required_minutes is {remaining}, "
+                f"expected {expected_remaining}."
+            )
+            continue
+        remaining_by_topic[key] = remaining
 
     current_date_value = structured_input.get("current_date")
     current_date = _strict_date(current_date_value)
-    if current_date is None:
+    current_date_valid = current_date is not None
+    if not current_date_valid:
         errors.append("Structured input current_date is invalid.")
         current_date = date.today()
+
+    current_datetime_value = structured_input.get("current_datetime")
+    current_datetime = _strict_datetime(current_datetime_value)
+    if current_datetime_value is not None and current_datetime is None:
+        errors.append("Structured input current_datetime is invalid.")
+    if current_datetime is None:
+        current_datetime = datetime.combine(current_date, time.min)
+    elif current_date_valid and current_datetime.date() != current_date:
+        errors.append(
+            "Structured input current_datetime date does not match current_date."
+        )
 
     completed_intervals: list[tuple[datetime, datetime, str]] = []
     completed_payload = structured_input.get("completed_sessions", [])
@@ -376,7 +701,7 @@ def validate_llm_schedule(
             session_date = _strict_date(entry.get("date"))
             start_time = _strict_time(entry.get("start_time"))
             duration = entry.get("duration_minutes")
-            if session_date is None or start_time is None or not isinstance(duration, int):
+            if session_date is None or start_time is None or not _is_int(duration):
                 continue
             start_dt = datetime.combine(session_date, start_time)
             end_dt = start_dt + timedelta(minutes=duration)
@@ -388,8 +713,8 @@ def validate_llm_schedule(
                 )
             )
 
-    window_usage: dict[tuple[tuple[str, str], int], int] = {}
-    topic_usage: dict[tuple[str, str], int] = {}
+    window_usage: dict[tuple[TopicKey, int], int] = {}
+    topic_usage: dict[TopicKey, int] = {}
     scheduled_intervals: list[tuple[datetime, datetime, str]] = []
 
     for index, entry in enumerate(sessions, start=1):
@@ -422,11 +747,16 @@ def validate_llm_schedule(
         if not isinstance(topic_name, str) or not topic_name.strip():
             errors.append(f"{label} has an invalid topic.")
             continue
-        key = (course, topic_name)
+        key = topic_key(course, topic_name)
         topic_info = topic_map.get(key)
         if topic_info is None:
             errors.append(
                 f"{label} introduces unknown course/topic: {course} / {topic_name}."
+            )
+        elif remaining_by_topic.get(key) == 0:
+            errors.append(
+                f"{label} schedules {course} / {topic_name}, but its remaining "
+                "requirement is 0 minutes."
             )
 
         reason = entry.get("reason")
@@ -450,8 +780,11 @@ def validate_llm_schedule(
 
         start_dt = datetime.combine(session_date, start_time)
         end_dt = start_dt + timedelta(minutes=duration)
-        if start_dt.date() < current_date:
-            errors.append(f"{label} is scheduled before the current date.")
+        if start_dt < current_datetime:
+            errors.append(
+                f"{label} is scheduled before the current date/time "
+                f"({current_datetime.isoformat(timespec='minutes')})."
+            )
 
         if topic_info is None:
             scheduled_intervals.append((start_dt, end_dt, label))
@@ -481,8 +814,7 @@ def validate_llm_schedule(
             if (
                 window_date is None
                 or window_start_time is None
-                or not isinstance(window_duration, int)
-                or isinstance(window_duration, bool)
+                or not _is_int(window_duration)
                 or window_duration <= 0
             ):
                 continue
@@ -519,7 +851,7 @@ def validate_llm_schedule(
             continue
         window = availability[window_index]
         duration = window.get("duration_minutes") if isinstance(window, dict) else None
-        if isinstance(duration, int) and not isinstance(duration, bool) and used > duration:
+        if _is_int(duration) and used > duration:
             errors.append(
                 f"Scheduled time for {key[0]} / {key[1]} on "
                 f"{window.get('available_date')} exceeds the available duration."
@@ -535,9 +867,7 @@ def validate_llm_schedule(
         total_available = sum(
             window.get("duration_minutes", 0)
             for window in availability
-            if isinstance(window, dict)
-            and isinstance(window.get("duration_minutes"), int)
-            and not isinstance(window.get("duration_minutes"), bool)
+            if isinstance(window, dict) and _is_int(window.get("duration_minutes"))
         )
         if used > total_available:
             errors.append(
@@ -545,6 +875,7 @@ def validate_llm_schedule(
                 "available duration."
             )
 
+    unscheduled_seen: set[TopicKey] = set()
     for index, entry in enumerate(unscheduled, start=1):
         label = f"Unscheduled topic {index}"
         if not isinstance(entry, dict):
@@ -552,26 +883,75 @@ def validate_llm_schedule(
             continue
         course = entry.get("course")
         topic_name = entry.get("topic")
+        key: TopicKey | None = None
         if not isinstance(course, str) or not isinstance(topic_name, str):
             errors.append(f"{label} must include course and topic strings.")
         else:
-            if (course, topic_name) not in topic_map:
+            key = topic_key(course, topic_name)
+            if key not in topic_map:
                 errors.append(
                     f"{label} introduces unknown course/topic: {course} / {topic_name}."
                 )
+                key = None
+            elif key in unscheduled_seen:
+                errors.append(
+                    f"{label} duplicates the unscheduled entry for "
+                    f"{course} / {topic_name}."
+                )
+            else:
+                unscheduled_seen.add(key)
+
         minutes = entry.get("unscheduled_minutes")
-        if (
-            isinstance(minutes, bool)
-            or not isinstance(minutes, (int, float))
-            or not math.isfinite(minutes)
-            or minutes < 0
-        ):
-            errors.append(f"{label} must have non-negative unscheduled_minutes.")
+        if _positive_int(minutes) is None:
+            errors.append(
+                f"{label} must have a positive integer unscheduled_minutes."
+            )
+
         reason = entry.get("reason")
         if not isinstance(reason, str) or not reason.strip():
             errors.append(f"{label} must include a non-empty reason.")
 
+        if key is not None and remaining_by_topic.get(key) == 0:
+            errors.append(
+                f"{label} reports unscheduled minutes for {course} / {topic_name}, "
+                "but its remaining requirement is 0 minutes."
+            )
+
+    accounting = build_accounting_summary(structured_input, schedule)
+    for row in accounting.topics:
+        key = topic_key(row.course, row.topic)
+        remaining = remaining_by_topic.get(key)
+        if remaining is None:
+            continue
+        if remaining > 0 and row.scheduled_minutes > remaining:
+            errors.append(
+                f"Scheduled time for {key[0]} / {key[1]} exceeds its remaining "
+                f"requirement ({row.scheduled_minutes} scheduled > "
+                f"{remaining} remaining)."
+            )
+        if row.accounted_minutes != remaining:
+            errors.append(
+                f"Workload mismatch for {key[0]} / {key[1]}: required remaining "
+                f"{remaining} minutes, but the response accounts for "
+                f"{row.accounted_minutes} minutes ({row.scheduled_minutes} scheduled "
+                f"+ {row.reported_unscheduled_minutes} unscheduled)."
+            )
+
     return errors
+
+
+def _repository_relative_path(path: Path) -> str:
+    """Return a non-absolute path for logs, preferring project-relative form."""
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(PROJECT_ROOT).as_posix()
+    except ValueError:
+        pass
+    try:
+        relative = os.path.relpath(resolved, PROJECT_ROOT)
+    except ValueError:
+        return path.name
+    return Path(relative).as_posix()
 
 
 def save_run_log(
@@ -597,13 +977,18 @@ def generate_llm_schedule(
     output_dir: str | Path | None = None,
     prompt_path: str | Path | None = None,
     config: OllamaConfig | None = None,
+    current_datetime: datetime | None = None,
 ) -> LLMRunResult:
     """Call Ollama, validate, optionally repair once, and log the complete run."""
     started = time_module.perf_counter()
-    current_date = current_date or date.today()
-    structured_input = build_structured_input(
-        topics, availability, completed_sessions or [], current_date
-    )
+    if current_datetime is None:
+        current_datetime = (
+            datetime.combine(current_date, time.min)
+            if current_date is not None
+            else datetime.now()
+        )
+    current_datetime = _ceil_to_next_minute(current_datetime)
+    structured_input: dict[str, Any] = {}
 
     configured_model = config.model if config is not None else (
         os.environ.get(OLLAMA_MODEL_ENV, "").strip() or None
@@ -637,6 +1022,19 @@ def generate_llm_schedule(
     error: str | None = None
 
     try:
+        input_errors = validate_dataset(topics, availability)
+        if input_errors:
+            raise LLMInputError(
+                "Invalid planner input:\n" + format_errors(input_errors)
+            )
+        structured_input = build_structured_input(
+            topics,
+            availability,
+            completed_sessions or [],
+            current_date=current_datetime.date(),
+            current_datetime=current_datetime,
+        )
+
         active_config = config or OllamaConfig.from_env()
         configured_model = active_config.model
         configured_url = active_config.base_url
@@ -659,10 +1057,12 @@ def generate_llm_schedule(
             repair_prompt = build_repair_prompt(
                 initial_prompt, raw_initial, initial_errors
             )
+            # The final result must reflect the repair attempt. If the repair call
+            # or parsing fails, do not fall back to the initial parsed schedule.
+            parsed_schedule = None
             raw_repair = call_ollama(active_config, repair_prompt)
             parsed_repair, repair_parse_errors = parse_llm_json(raw_repair)
-            if parsed_repair is not None:
-                parsed_schedule = parsed_repair
+            parsed_schedule = parsed_repair
             final_errors = repair_parse_errors + validate_llm_schedule(
                 parsed_repair, structured_input
             )
@@ -671,6 +1071,8 @@ def generate_llm_schedule(
                 error = None
             else:
                 error = "LLM response remained invalid after one repair attempt."
+    except LLMInputError as exc:
+        error = str(exc)
     except LLMConfigurationError as exc:
         error = str(exc)
     except OllamaUnavailableError as exc:
@@ -680,11 +1082,17 @@ def generate_llm_schedule(
     except OSError as exc:
         error = f"Could not read the prompt template or write planner files: {exc}"
     except Exception as exc:  # Keep failures structured for the Streamlit page.
-        error = f"Unexpected LLM baseline error: {exc}"
+        error = f"Unexpected LLM baseline error ({type(exc).__name__}): {exc}"
 
     runtime_seconds = time_module.perf_counter() - started
     if status != "success" and error is None:
         error = "LLM run did not produce a valid schedule."
+
+    accounting_summary = (
+        build_accounting_summary(structured_input, parsed_schedule)
+        if isinstance(parsed_schedule, dict)
+        else None
+    )
 
     result = LLMRunResult(
         run_id=run_id,
@@ -698,6 +1106,7 @@ def generate_llm_schedule(
         raw_initial_response=raw_initial,
         raw_repair_response=raw_repair,
         parsed_schedule=parsed_schedule,
+        accounting_summary=accounting_summary,
         validation_errors_initial=initial_errors,
         validation_errors_final=final_errors,
         repair_attempted=repair_attempted,
@@ -707,7 +1116,7 @@ def generate_llm_schedule(
     )
 
     destination = Path(output_dir) if output_dir is not None else LLM_RUN_DIR
-    result.log_path = str(destination / f"{run_id}.json")
+    result.log_path = _repository_relative_path(destination / f"{run_id}.json")
     try:
         save_run_log(result, destination)
     except OSError as exc:

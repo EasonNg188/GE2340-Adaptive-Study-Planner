@@ -342,13 +342,69 @@ def _comparison_frame(before: ScheduleResult, after: ScheduleResult) -> pd.DataF
     return pd.DataFrame(rows)
 
 
+def _render_llm_accounting(result) -> None:
+    summary = result.accounting_summary
+    if summary is None:
+        return
+
+    st.subheader("Workload accounting")
+    total_cols = st.columns(5)
+    total_cols[0].metric(
+        "Total remaining required min", summary.total_remaining_required_minutes
+    )
+    total_cols[1].metric("Total LLM scheduled min", summary.total_scheduled_minutes)
+    total_cols[2].metric(
+        "Total reported unscheduled min", summary.total_reported_unscheduled_minutes
+    )
+    total_cols[3].metric("Total accounted min", summary.total_accounted_minutes)
+    coverage = (
+        "N/A"
+        if summary.coverage_percentage is None
+        else f"{summary.coverage_percentage:.2f}%"
+    )
+    total_cols[4].metric("Workload coverage", coverage)
+
+    rows = [
+        {
+            "Course": row.course,
+            "Topic": row.topic,
+            "Required min": row.required_minutes,
+            "Completed min": row.completed_minutes,
+            "Remaining required min": row.remaining_required_minutes,
+            "LLM scheduled min": row.scheduled_minutes,
+            "LLM-reported unscheduled min": row.reported_unscheduled_minutes,
+            "Accounted min": row.accounted_minutes,
+            "Accounting status": row.accounting_status,
+        }
+        for row in summary.topics
+    ]
+    if rows:
+        st.dataframe(
+            pd.DataFrame(rows), use_container_width=True, hide_index=True
+        )
+
+    if summary.has_invalid_values:
+        st.warning(
+            "One or more accounting values were malformed or unsupported. "
+            "Coverage is unavailable; affected rows are marked invalid."
+        )
+    elif not summary.is_complete:
+        st.warning(
+            "Workload accounting did not pass: one or more topics do not account "
+            "for every remaining required minute."
+        )
+
+
 def _render_llm_result() -> None:
     result = st.session_state.llm_result
     if result is None:
         return
 
     if result.success:
-        st.success("Valid LLM-generated schedule. All required constraints passed.")
+        st.success(
+            "Valid LLM-generated schedule. Temporal constraints and workload "
+            "accounting passed."
+        )
     else:
         st.error(
             "LLM run failed. The output is not a valid schedule and must not be "
@@ -380,7 +436,12 @@ def _render_llm_result() -> None:
         for error in result.validation_errors_final:
             st.error(error)
     elif result.success:
-        st.caption("Raw validation status: valid JSON and all constraints satisfied.")
+        st.caption(
+            "Raw validation status: valid JSON, structural and temporal constraints "
+            "satisfied, and workload accounting passed."
+        )
+
+    _render_llm_accounting(result)
 
     if result.success and result.parsed_schedule is not None:
         sessions = result.parsed_schedule.get("sessions", [])
@@ -854,9 +915,11 @@ with llm_tab:
                 st.error(str(exc))
 
     st.caption(
-        "The LLM receives the same synthetic topics, availability, current date, and "
-        "completed sessions as the adaptive planner. Invalid output receives one "
-        "repair request and is never replaced by a rule-based schedule."
+        "The LLM receives the synthetic topics, availability, current date/time, "
+        "completed sessions, and explicit required/completed/remaining workload "
+        "fields. A result is valid only when temporal constraints and workload "
+        "accounting pass. Invalid output receives one repair request and is never "
+        "replaced by a rule-based schedule."
     )
     if st.button(
         "Generate LLM schedule",
@@ -868,7 +931,7 @@ with llm_tab:
             st.session_state.llm_result = generate_llm_schedule(
                 topics=st.session_state.topics,
                 availability=st.session_state.availability,
-                current_date=date.today(),
+                current_datetime=datetime.now(),
                 completed_sessions=[
                     session
                     for session in st.session_state.sessions

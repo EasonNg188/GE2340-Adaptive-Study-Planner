@@ -175,22 +175,17 @@ def _find_slot(
         ) >= 1:
             continue
 
-        fits = False
+        duration_delta = timedelta(minutes=duration)
         for busy_start, busy_end in sorted_busy:
             if busy_end <= candidate:
                 continue
-            if busy_start >= candidate + timedelta(minutes=duration):
-                fits = True
+            if busy_start >= candidate + duration_delta:
                 break
-            if busy_start < candidate + timedelta(minutes=duration):
-                candidate = busy_end
-                if candidate + timedelta(minutes=duration) > window_end:
-                    break
+            candidate = busy_end
+            if candidate + duration_delta > window_end:
+                break
 
-        if candidate + timedelta(minutes=duration) <= window_end:
-            fits = True
-
-        if not fits:
+        if candidate + duration_delta > window_end:
             continue
         if one_session_per_day and daily_counts.get(
             (plan.topic.key, candidate.date()), 0
